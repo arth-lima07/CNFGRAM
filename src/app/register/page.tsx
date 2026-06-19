@@ -1,14 +1,18 @@
 'use client'
-
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function RegisterPage() {
+  const router = useRouter()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function register() {
+    setLoading(true)
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password
@@ -16,6 +20,7 @@ export default function RegisterPage() {
 
     if (error) {
       alert(error.message)
+      setLoading(false)
       return
     }
 
@@ -24,18 +29,21 @@ export default function RegisterPage() {
         .from('profiles')
         .insert({
           id: data.user.id,
-          username: username,
+          username: username.trim(),
           guilda: '',
           bio: ''
         })
 
       if (profileError) {
         alert(profileError.message)
+        setLoading(false)
         return
       }
     }
 
+    setLoading(false)
     alert('Conta criada com sucesso!')
+    router.push('/login')
   }
 
   return (
@@ -44,7 +52,6 @@ export default function RegisterPage() {
         <h1 className="text-3xl font-bold text-center">
           CNFGRAM
         </h1>
-
         <input
           type="text"
           placeholder="Username"
@@ -52,7 +59,6 @@ export default function RegisterPage() {
           onChange={(e) => setUsername(e.target.value)}
           className="p-2 rounded bg-zinc-800 border border-zinc-700"
         />
-
         <input
           type="email"
           placeholder="Email"
@@ -60,7 +66,6 @@ export default function RegisterPage() {
           onChange={(e) => setEmail(e.target.value)}
           className="p-2 rounded bg-zinc-800 border border-zinc-700"
         />
-
         <input
           type="password"
           placeholder="Senha"
@@ -68,13 +73,20 @@ export default function RegisterPage() {
           onChange={(e) => setPassword(e.target.value)}
           className="p-2 rounded bg-zinc-800 border border-zinc-700"
         />
-
         <button
           onClick={register}
-          className="bg-green-600 hover:bg-green-700 p-2 rounded font-semibold"
+          disabled={loading}
+          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 p-2 rounded font-semibold"
         >
-          Criar Conta
+          {loading ? 'Criando conta...' : 'Criar Conta'}
         </button>
+
+        <p className="text-center text-sm text-zinc-400 mt-1">
+          Já tem uma conta?{' '}
+          <a href="/login" className="text-green-500 hover:text-green-400 font-medium">
+            Entrar
+          </a>
+        </p>
       </div>
     </main>
   )

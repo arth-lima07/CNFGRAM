@@ -40,6 +40,7 @@ export default function UserPage() {
   const [followers, setFollowers] = useState(0)
   const [following, setFollowing] = useState(0)
   const [isFollowing, setIsFollowing] = useState(false)
+  const [theyFollowMe, setTheyFollowMe] = useState(false)
   const [isOwnProfile, setIsOwnProfile] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
 
@@ -71,11 +72,16 @@ export default function UserPage() {
     setFollowing(followingCount || 0)
 
     if (user) {
-      const { data: follow } = await supabase
-        .from('follows').select('id')
-        .eq('follower_id', user.id).eq('following_id', profileData.id)
-        .maybeSingle()
-      setIsFollowing(!!follow)
+      const [{ data: iFollow }, { data: theyFollow }] = await Promise.all([
+        supabase.from('follows').select('id')
+          .eq('follower_id', user.id).eq('following_id', profileData.id)
+          .maybeSingle(),
+        supabase.from('follows').select('id')
+          .eq('follower_id', profileData.id).eq('following_id', user.id)
+          .maybeSingle(),
+      ])
+      setIsFollowing(!!iFollow)
+      setTheyFollowMe(!!theyFollow)
     }
   }
 
@@ -98,6 +104,16 @@ export default function UserPage() {
     setFollowLoading(false)
   }
 
+  function handleMessageClick() {
+    if (!profile) return
+    const canMessage = isFollowing && theyFollowMe
+    if (!canMessage) {
+      alert('Vocês precisam se seguir mutuamente para trocar mensagens.')
+      return
+    }
+    window.location.href = `/messages/${profile.id}`
+  }
+
   useEffect(() => { loadUser() }, [username])
 
   if (!profile) {
@@ -116,6 +132,8 @@ export default function UserPage() {
       </>
     )
   }
+
+  const canMessage = isFollowing && theyFollowMe
 
   return (
     <>
@@ -159,19 +177,48 @@ export default function UserPage() {
                   </div>
                 </div>
 
-                {/* Follow button — only for others */}
+                {/* Botões — só para outros perfis */}
                 {!isOwnProfile && (
-                  <button
-                    onClick={toggleFollow}
-                    disabled={followLoading}
-                    className={`mt-4 px-5 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${
-                      isFollowing
-                        ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-200'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    }`}
-                  >
-                    {followLoading ? '…' : isFollowing ? 'Seguindo' : 'Seguir'}
-                  </button>
+                  <div className="flex items-center gap-2 mt-4">
+                    <button
+                      onClick={toggleFollow}
+                      disabled={followLoading}
+                      className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${
+                        isFollowing
+                          ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-200'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
+                    >
+                      {followLoading ? '…' : isFollowing ? 'Seguindo' : 'Seguir'}
+                    </button>
+
+                    <button
+                      onClick={handleMessageClick}
+                      title={!canMessage ? 'Vocês precisam se seguir mutuamente para trocar mensagens' : 'Enviar mensagem'}
+                      className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1.5 ${
+                        canMessage
+                          ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>
+                      </svg>
+                      Mensagem
+                      {!canMessage && (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 ml-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2"/>
+                          <path d="M7 11V7a5 5 0 0110 0v4"/>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {!isOwnProfile && !canMessage && (
+                  <p className="text-xs text-zinc-500 mt-2">
+                    Sigam-se mutuamente para trocar mensagens.
+                  </p>
                 )}
 
                 {isOwnProfile && (
