@@ -586,7 +586,7 @@ export default function PostClient({ postId }: { postId: number }) {
                       </NavLink>
                       <span className="text-xs text-zinc-500">{fmtDate(comment.created_at)}</span>
                     </div>
-                    <p className="text-sm text-zinc-200 leading-snug mt-0.5 whitespace-pre-wrap break-words">{comment.content}</p>
+                    <p className="text-sm text-zinc-200 leading-snug mt-0.5 whitespace-pre-wrap break-words">{renderWithMentions(comment.content)}</p>
                     {comment.likeCount > 0 && <span className="text-xs text-zinc-500 mt-1 block">{comment.likeCount} curtida{comment.likeCount > 1 ? 's' : ''}</span>}
                   </div>
                   <button onClick={() => toggleCommentLike(comment.id)} className="shrink-0 pt-0.5 text-zinc-400 hover:text-zinc-200 transition-colors">
