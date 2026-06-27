@@ -347,7 +347,6 @@ type Poll = {
   options: PollOption[]
   totalVotes: number
   myVoteOptionId: number | null
-  link: string | null
 }
 
 // Resultado retornado pela iTunes Search API — mesmo formato usado no StoryCreator
@@ -878,7 +877,6 @@ export default function FeedPage() {
 
   // Enquete em criação
   const [composerPollOptions, setComposerPollOptions] = useState<string[]>(['', ''])
-  const [composerPollLink, setComposerPollLink] = useState('')
   const [showPollComposer, setShowPollComposer] = useState(false)
 
   // Votos por post: postId -> Poll (carregado junto com os posts)
@@ -1184,12 +1182,10 @@ export default function FeedPage() {
             votedByMe: myVoteByPost[postId] === o.id,
           }))
           const totalVotes = options.reduce((s, o) => s + o.voteCount, 0)
-          const postData = (postsData || []).find((p: any) => p.id === postId)
           pollsByPost[postId] = {
             options,
             totalVotes,
             myVoteOptionId: myVoteByPost[postId] ?? null,
-            link: postData?.poll_link ?? null,
           }
         }
         setPolls(pollsByPost)
@@ -1547,9 +1543,6 @@ export default function FeedPage() {
           await supabase.from('poll_options').insert(
             validOptions.map((text, i) => ({ post_id: newPost.id, text, position: i }))
           )
-          if (composerPollLink.trim()) {
-            await supabase.from('posts').update({ poll_link: composerPollLink.trim() }).eq('id', newPost.id)
-          }
         }
       }
     }
@@ -1562,14 +1555,13 @@ export default function FeedPage() {
     setComposerTrack(null)
     setShowPollComposer(false)
     setComposerPollOptions(['', ''])
-    setComposerPollLink('')
     await loadPosts()
     setLoading(false)
   }
 
   function togglePollComposer() {
     setShowPollComposer(prev => {
-      if (prev) { setComposerPollOptions(['', '']); setComposerPollLink('') }
+      if (prev) { setComposerPollOptions(['', '']) }
       return !prev
     })
   }
@@ -1599,7 +1591,6 @@ export default function FeedPage() {
           options: newOptions,
           totalVotes: newOptions.reduce((s, o) => s + o.voteCount, 0),
           myVoteOptionId: wasVoted ? null : optionId,
-          link: p.link,
         },
       }
     })
@@ -2069,29 +2060,6 @@ export default function FeedPage() {
                     Adicionar opção
                   </button>
                 )}
-                {/* Link externo da enquete (opcional) */}
-                <div className="pt-1 border-t border-zinc-800 mt-1">
-                  <p className="text-xs text-zinc-500 font-medium px-0.5 mb-1.5">Link externo <span className="text-zinc-600 font-normal">(opcional)</span></p>
-                  <div className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 focus-within:border-violet-500 focus-within:ring-1 focus-within:ring-violet-500/40 rounded-xl px-3 py-2 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-zinc-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                    </svg>
-                    <input
-                      value={composerPollLink}
-                      onChange={e => setComposerPollLink(e.target.value)}
-                      placeholder="Ex: Veja mais, Participe, Saiba mais…"
-                      type="text"
-                      className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-600 outline-none"
-                    />
-                    {composerPollLink && (
-                      <button onClick={() => setComposerPollLink('')} className="text-zinc-500 hover:text-zinc-300 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
               </div>
             )}
 
@@ -2376,25 +2344,6 @@ export default function FeedPage() {
                                   ? 'Seja o primeiro a votar'
                                   : `${poll.totalVotes} voto${poll.totalVotes > 1 ? 's' : ''}${voted ? ' · Toque para mudar' : ''}`}
                               </p>
-                              {poll.link && (
-                                <button
-                                  onClick={e => {
-                                    e.stopPropagation()
-                                    openShareModal(post.id)
-                                  }}
-                                  className="flex items-center gap-2 mt-1 w-full px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-violet-500/40 transition-colors group text-left"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-violet-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                                  </svg>
-                                  <span className="flex-1 text-xs text-zinc-300 group-hover:text-white truncate transition-colors">
-                                    {poll.link}
-                                  </span>
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-zinc-500 group-hover:text-violet-400 shrink-0 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="9 18 15 12 9 6"/>
-                                  </svg>
-                                </button>
-                              )}
                             </div>
                           )
                         })()}
