@@ -1614,15 +1614,20 @@ export default function FeedPage() {
     }
   }
 
-  // Abre a página dedicada do post (/post/[id]) ao clicar no card — mas ignora o
-  // clique se ele veio de um botão, link, input etc. dentro do card (curtir,
-  // comentar, editar, votar na enquete, @menções, avatar/usuário...), pra não
-  // disparar a navegação por engano nessas interações.
-  function goToPost(e: React.MouseEvent, postId: number) {
+  // Abre a página dedicada do post (/post/[id]).
+  // Regra: se o post TEM imagem, só a imagem em si abre o post (clicar no texto/área
+  // vazia não faz nada). Se o post é só texto, qualquer área não-interativa do card abre.
+  // Em qualquer caso, cliques em botão/link/input (curtir, comentar, @menção, editar...)
+  // nunca disparam a navegação.
+  function goToPost(e: React.MouseEvent, post: Post) {
     const target = e.target as HTMLElement
     if (target.closest('button, a, input, textarea, [data-no-card-nav]')) return
+
+    const hasImage = (post.image_urls && post.image_urls.length > 0) || !!post.image_url
+    if (hasImage && !target.closest('[data-post-image]')) return
+
     setCardNavigating(true)
-    setTimeout(() => { window.location.href = `/post/${postId}` }, 180)
+    setTimeout(() => { window.location.href = `/post/${post.id}` }, 180)
   }
 
   async function toggleLike(postId: number) {
@@ -2212,8 +2217,10 @@ export default function FeedPage() {
 
                 <article
                   id={`post-${post.id}`}
-                  onClick={e => goToPost(e, post.id)}
-                  className={`post-enter glass-card rounded-2xl overflow-hidden cursor-pointer ${
+                  onClick={e => goToPost(e, post)}
+                  className={`post-enter glass-card rounded-2xl overflow-hidden ${
+                    !((post.image_urls && post.image_urls.length > 0) || post.image_url) ? 'cursor-pointer' : ''
+                  } ${
                     post.iAmMentioned
                       ? 'border-2 border-pink-600/60 shadow-[0_0_0_1px_rgba(236,72,153,0.25)]'
                       : 'border border-white/10'
@@ -2302,7 +2309,8 @@ export default function FeedPage() {
                                 key={idx}
                                 src={url}
                                 alt={`Imagem ${idx + 1}`}
-                                className={`w-full object-cover ${post.image_urls.length === 1 ? 'max-h-[520px]' : post.image_urls.length === 3 && idx === 0 ? 'col-span-2 h-56' : 'h-44'}`}
+                                data-post-image
+                                className={`w-full object-cover cursor-pointer ${post.image_urls.length === 1 ? 'max-h-[520px]' : post.image_urls.length === 3 && idx === 0 ? 'col-span-2 h-56' : 'h-44'}`}
                                 loading="lazy"
                               />
                             ))}
