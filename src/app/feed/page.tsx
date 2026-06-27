@@ -851,6 +851,7 @@ export default function FeedPage() {
   const [currentUserId, setCurrentUserId] = useState('')
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null)
   const [currentUsername, setCurrentUsername] = useState('')
+  const [cardNavigating, setCardNavigating] = useState(false)
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [comments, setComments] = useState<Record<number, Comment[]>>({})
@@ -1613,6 +1614,17 @@ export default function FeedPage() {
     }
   }
 
+  // Abre a página dedicada do post (/post/[id]) ao clicar no card — mas ignora o
+  // clique se ele veio de um botão, link, input etc. dentro do card (curtir,
+  // comentar, editar, votar na enquete, @menções, avatar/usuário...), pra não
+  // disparar a navegação por engano nessas interações.
+  function goToPost(e: React.MouseEvent, postId: number) {
+    const target = e.target as HTMLElement
+    if (target.closest('button, a, input, textarea, [data-no-card-nav]')) return
+    setCardNavigating(true)
+    setTimeout(() => { window.location.href = `/post/${postId}` }, 180)
+  }
+
   async function toggleLike(postId: number) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { alert('Faça login.'); return }
@@ -1927,6 +1939,15 @@ export default function FeedPage() {
       <style>{ANIMATION_STYLES}</style>
       <Navbar />
 
+      {cardNavigating && (
+        <div className="page-fade-overlay">
+          <svg className="animate-spin w-7 h-7 text-emerald-500" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+      )}
+
       <div className="xl:pl-[244px] pl-[72px]">
         <div className="max-w-[470px] mx-auto px-3 sm:px-4 py-6 space-y-4">
 
@@ -2191,7 +2212,8 @@ export default function FeedPage() {
 
                 <article
                   id={`post-${post.id}`}
-                  className={`post-enter glass-card rounded-2xl overflow-hidden ${
+                  onClick={e => goToPost(e, post.id)}
+                  className={`post-enter glass-card rounded-2xl overflow-hidden cursor-pointer ${
                     post.iAmMentioned
                       ? 'border-2 border-pink-600/60 shadow-[0_0_0_1px_rgba(236,72,153,0.25)]'
                       : 'border border-white/10'
@@ -2206,13 +2228,11 @@ export default function FeedPage() {
                   <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <Avatar url={post.avatar_url} username={post.username} href={`/user/${encodeURIComponent(post.username)}`} />
-                      <div>
-                        <NavLink href={`/user/${encodeURIComponent(post.username)}`} className="nav-link font-semibold text-sm text-white hover:text-emerald-400">
+                      <div className="flex items-baseline gap-1.5 min-w-0">
+                        <NavLink href={`/user/${encodeURIComponent(post.username)}`} className="nav-link font-semibold text-sm text-white hover:text-emerald-400 truncate">
                           @{post.username}
                         </NavLink>
-                        <NavLink href={`/post/${post.id}`} className="nav-link text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
-                          {formatDate(post.created_at)}
-                        </NavLink>
+                        <span className="text-xs text-zinc-500 shrink-0">· {formatDate(post.created_at)}</span>
                       </div>
                     </div>
 
