@@ -76,7 +76,7 @@ export default function SearchPage() {
               {users.filter(u => !!u.username).map((user) => (
                 <a
                   key={user.id}
-                  href={`/user/${user.username}`}
+                  href={`/user/${encodeURIComponent(user.username)}`}
                   className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center gap-4 hover:bg-zinc-800 transition-colors"
                 >
                   {user.avatar_url ? (

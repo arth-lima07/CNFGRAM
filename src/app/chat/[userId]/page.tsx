@@ -11,6 +11,16 @@ type Message = {
   content: string
   created_at: string
   read: boolean
+  shared_post_id: number | null
+}
+
+type SharedPost = {
+  id: number
+  username: string
+  avatar_url: string | null
+  content: string
+  image_url: string | null
+  image_urls: string[]
 }
 
 type Profile = {
@@ -48,12 +58,49 @@ export default function ConversationPage() {
   const [myId, setMyId] = useState<string | null>(null)
   const [otherProfile, setOtherProfile] = useState<Profile | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [sharedPosts, setSharedPosts] = useState<Record<number, SharedPost>>({})
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [canMessage, setCanMessage] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  async function loadSharedPosts(msgs: Message[]) {
+    const postIds = [...new Set(msgs.filter(m => m.shared_post_id).map(m => m.shared_post_id as number))]
+    const missingIds = postIds.filter(id => !sharedPosts[id])
+    if (missingIds.length === 0) return
+
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('id, user_id, content, image_url, image_urls')
+      .in('id', missingIds)
+
+    if (!postsData || postsData.length === 0) return
+
+    const userIds = [...new Set(postsData.map(p => p.user_id))]
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url')
+      .in('id', userIds)
+
+    const profileMap: Record<string, { username: string; avatar_url: string | null }> = {}
+    for (const p of profilesData || []) profileMap[p.id] = { username: p.username, avatar_url: p.avatar_url }
+
+    const newMap: Record<number, SharedPost> = {}
+    for (const p of postsData) {
+      const imageUrls: string[] = p.image_urls?.length ? p.image_urls : p.image_url ? [p.image_url] : []
+      newMap[p.id] = {
+        id: p.id,
+        username: profileMap[p.user_id]?.username || '?',
+        avatar_url: profileMap[p.user_id]?.avatar_url ?? null,
+        content: p.content || '',
+        image_url: p.image_url ?? null,
+        image_urls: imageUrls,
+      }
+    }
+    setSharedPosts(prev => ({ ...prev, ...newMap }))
+  }
 
   async function load() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -78,6 +125,7 @@ export default function ConversationPage() {
       .order('created_at', { ascending: true })
 
     setMessages(msgs || [])
+    if (msgs && msgs.length > 0) loadSharedPosts(msgs)
 
     // Mark messages as read
     await supabase
@@ -128,6 +176,7 @@ export default function ConversationPage() {
         const msg = payload.new as Message
         if (msg.sender_id === otherId) {
           setMessages(prev => [...prev, msg])
+          if (msg.shared_post_id) loadSharedPosts([msg])
           supabase.from('messages').update({ read: true }).eq('id', msg.id)
         }
       })
@@ -201,16 +250,59 @@ export default function ConversationPage() {
                   ? `${samePrev ? 'rounded-tr-sm' : 'rounded-tr-2xl'} ${sameNext ? 'rounded-br-sm' : 'rounded-br-2xl'} rounded-tl-2xl rounded-bl-2xl`
                   : `${samePrev ? 'rounded-tl-sm' : 'rounded-tl-2xl'} ${sameNext ? 'rounded-bl-sm' : 'rounded-bl-2xl'} rounded-tr-2xl rounded-br-2xl`
 
+                const sharedPost = msg.shared_post_id ? sharedPosts[msg.shared_post_id] : null
+
                 return (
                   <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[72%] px-4 py-2.5 text-sm leading-relaxed ${br} ${
+                    <div className={`max-w-[72%] text-sm leading-relaxed ${br} ${
+                      msg.shared_post_id ? 'overflow-hidden' : 'px-4 py-2.5'
+                    } ${
                       isMe
                         ? 'bg-blue-500 text-white'
                         : 'bg-zinc-800 text-zinc-100'
                     }`}>
-                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                      {msg.shared_post_id ? (
+                        <a
+                          href={sharedPost ? `/post/${sharedPost.id}` : '#'}
+                          className="block hover:opacity-90 transition-opacity"
+                        >
+                          {!sharedPost ? (
+                            <div className="px-4 py-3 text-xs text-zinc-300">Post indisponível</div>
+                          ) : (
+                            <div className="bg-black/20">
+                              {sharedPost.image_urls.length > 0 && (
+                                <img
+                                  src={sharedPost.image_urls[0]}
+                                  alt="Post compartilhado"
+                                  className="w-full max-h-48 object-cover"
+                                  loading="lazy"
+                                />
+                              )}
+                              <div className="px-3 py-2.5 flex gap-2">
+                                {sharedPost.avatar_url ? (
+                                  <img src={sharedPost.avatar_url} alt={sharedPost.username} className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5" />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5">
+                                    {sharedPost.username.slice(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold">@{sharedPost.username}</p>
+                                  {sharedPost.content && (
+                                    <p className={`text-xs mt-0.5 line-clamp-2 ${isMe ? 'text-blue-100' : 'text-zinc-400'}`}>
+                                      {sharedPost.content}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </a>
+                      ) : (
+                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                      )}
                       {(!sameNext) && (
-                        <p className={`text-[10px] mt-1 ${isMe ? 'text-blue-200 text-right' : 'text-zinc-500'}`}>
+                        <p className={`text-[10px] mt-1 ${msg.shared_post_id ? 'px-3 pb-2' : ''} ${isMe ? 'text-blue-200 text-right' : 'text-zinc-500'}`}>
                           {formatTime(msg.created_at)}
                           {isMe && (
                             <span className="ml-1">

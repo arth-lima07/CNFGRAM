@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Navbar from '@/components/Navbar'
 
@@ -30,12 +30,56 @@ function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
 }
 
+// Extrai paleta de cores dominantes de uma imagem via canvas
+function extractColors(imgEl: HTMLImageElement): Promise<string[]> {
+  return new Promise((resolve) => {
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = 50
+      canvas.height = 50
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return resolve(['#18181b', '#27272a'])
+      ctx.drawImage(imgEl, 0, 0, 50, 50)
+      const data = ctx.getImageData(0, 0, 50, 50).data
+
+      // Agrupa pixels em blocos e pega os tons mais frequentes
+      const buckets: Record<string, number> = {}
+      for (let i = 0; i < data.length; i += 4) {
+        const r = Math.round(data[i] / 32) * 32
+        const g = Math.round(data[i + 1] / 32) * 32
+        const b = Math.round(data[i + 2] / 32) * 32
+        const key = `${r},${g},${b}`
+        buckets[key] = (buckets[key] || 0) + 1
+      }
+
+      const sorted = Object.entries(buckets)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([k]) => {
+          const [r, g, b] = k.split(',')
+          // Escurece cada cor para ficar mais elegante como banner
+          const dr = Math.max(0, parseInt(r) - 40)
+          const dg = Math.max(0, parseInt(g) - 40)
+          const db = Math.max(0, parseInt(b) - 40)
+          return `rgb(${dr},${dg},${db})`
+        })
+
+      resolve(sorted.length >= 2 ? sorted : ['#18181b', '#27272a'])
+    } catch {
+      resolve(['#18181b', '#27272a'])
+    }
+  })
+}
+
 export default function PerfilPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
   const [bio, setBio] = useState('')
+  const [guilda, setGuilda] = useState('')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [bannerColors, setBannerColors] = useState<string[]>(['#18181b', '#27272a'])
+  const imgRef = useRef<HTMLImageElement | null>(null)
 
   async function loadProfile() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -47,6 +91,7 @@ export default function PerfilPage() {
     if (profileData) {
       setProfile(profileData)
       setBio(profileData.bio || '')
+      setGuilda(profileData.guilda || '')
     }
 
     const { data: postsData } = await supabase
@@ -56,14 +101,17 @@ export default function PerfilPage() {
     setPosts(postsData || [])
   }
 
-  async function saveBio() {
+  async function saveProfile() {
     if (!profile) return
     setLoading(true)
-    const { error } = await supabase.from('profiles').update({ bio }).eq('id', profile.id)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ bio, guilda })
+      .eq('id', profile.id)
     setLoading(false)
     if (error) { alert(error.message); return }
-    setProfile(prev => prev ? { ...prev, bio } : prev)
-    alert('Bio salva!')
+    setProfile(prev => prev ? { ...prev, bio, guilda } : prev)
+    alert('Perfil salvo!')
   }
 
   async function uploadAvatar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -72,7 +120,6 @@ export default function PerfilPage() {
 
     setUploading(true)
 
-    // Remove old avatar if exists
     if (profile.avatar_url) {
       const oldPath = profile.avatar_url.split('/avatars/')[1]
       if (oldPath) await supabase.storage.from('avatars').remove([oldPath])
@@ -105,12 +152,21 @@ export default function PerfilPage() {
     setUploading(false)
   }
 
+  // Extrai cores quando o avatar carrega
+  function handleImgLoad(e: React.SyntheticEvent<HTMLImageElement>) {
+    extractColors(e.currentTarget).then(setBannerColors)
+  }
+
   async function logout() {
     await supabase.auth.signOut()
     window.location.href = '/login'
   }
 
   useEffect(() => { loadProfile() }, [])
+
+  const bannerGradient = bannerColors.length >= 2
+    ? `linear-gradient(135deg, ${bannerColors[0]} 0%, ${bannerColors[1]} 50%, ${bannerColors[2] ?? bannerColors[0]} 100%)`
+    : 'linear-gradient(135deg, #18181b 0%, #27272a 100%)'
 
   return (
     <>
@@ -119,70 +175,107 @@ export default function PerfilPage() {
         <div className="max-w-2xl mx-auto p-4 space-y-4">
 
           {/* Profile card */}
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
-            <div className="flex items-start gap-5 mb-6">
-              {/* Avatar */}
-              <div className="relative shrink-0">
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt="Avatar"
-                    className="w-20 h-20 rounded-full object-cover border-2 border-zinc-700"
-                  />
-                ) : (
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-2xl font-bold border-2 border-zinc-700">
-                    {(profile?.username || '?').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                {uploading && (
-                  <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
-                    <svg className="animate-spin w-5 h-5 text-white" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+
+            {/* Banner com cores extraídas da foto */}
+            <div
+              className="h-32 w-full transition-all duration-700"
+              style={{ background: bannerGradient }}
+            />
+
+            {/* Avatar sobreposto ao banner */}
+            <div className="px-6 pb-6">
+              <div className="flex items-end justify-between -mt-12 mb-4">
+                <div className="relative">
+                  {profile?.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt="Avatar"
+                      ref={imgRef}
+                      onLoad={handleImgLoad}
+                      crossOrigin="anonymous"
+                      className="w-24 h-24 rounded-full object-cover border-4 border-zinc-900 shadow-xl"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-3xl font-bold border-4 border-zinc-900 shadow-xl">
+                      {(profile?.username || '?').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+
+                  {uploading && (
+                    <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center border-4 border-zinc-900">
+                      <svg className="animate-spin w-6 h-6 text-white" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                    </div>
+                  )}
+
+                  {/* Botão de câmera */}
+                  <label className="absolute bottom-0 right-0 w-8 h-8 bg-emerald-600 hover:bg-emerald-500 rounded-full flex items-center justify-center cursor-pointer transition-colors border-2 border-zinc-900 shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                      <circle cx="12" cy="13" r="4"/>
                     </svg>
-                  </div>
-                )}
-                <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-emerald-600 hover:bg-emerald-500 rounded-full flex items-center justify-center cursor-pointer transition-colors border-2 border-zinc-900">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
-                  </svg>
-                  <input type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
-                </label>
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold truncate">@{profile?.username}</h1>
-                <p className="text-zinc-400 text-sm mt-0.5">⚔️ {profile?.guilda || 'Sem guilda'}</p>
-                <div className="flex gap-4 mt-3 text-sm text-zinc-400">
-                  <span>📝 {posts.length} posts</span>
+                    <input type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
+                  </label>
                 </div>
+
+                <button
+                  onClick={logout}
+                  className="text-xs text-zinc-500 hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-zinc-800 border border-zinc-700 mb-1"
+                >
+                  Sair
+                </button>
               </div>
 
-              <button
-                onClick={logout}
-                className="shrink-0 text-xs text-zinc-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800"
-              >
-                Sair
-              </button>
+              {/* Nome e stats */}
+              <h1 className="text-xl font-bold">@{profile?.username}</h1>
+              <p className="text-zinc-400 text-sm mt-0.5">⚔️ {profile?.guilda || 'Sem guilda'}</p>
+              <div className="flex gap-4 mt-3 text-sm text-zinc-400">
+                <span>📝 {posts.length} posts</span>
+              </div>
             </div>
 
-            {/* Bio editor */}
-            <div>
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Bio</label>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="w-full bg-zinc-800 rounded-xl p-3 mt-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
-                rows={3}
-                placeholder="Fale sobre você..."
-              />
-              <div className="flex justify-end mt-2">
+            {/* Formulário de edição */}
+            <div className="px-6 pb-6 border-t border-zinc-800 pt-5 space-y-4">
+
+              {/* Guilda */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+                  ⚔️ Guilda
+                </label>
+                <input
+                  type="text"
+                  value={guilda}
+                  onChange={(e) => setGuilda(e.target.value)}
+                  className="w-full bg-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 border border-zinc-700"
+                  placeholder="Nome da sua guilda..."
+                  maxLength={40}
+                />
+              </div>
+
+              {/* Bio */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+                  Bio
+                </label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  className="w-full bg-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none border border-zinc-700"
+                  rows={3}
+                  placeholder="Fale sobre você..."
+                />
+              </div>
+
+              <div className="flex justify-end">
                 <button
-                  onClick={saveBio}
+                  onClick={saveProfile}
                   disabled={loading}
-                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-colors"
                 >
-                  {loading ? 'Salvando…' : 'Salvar bio'}
+                  {loading ? 'Salvando…' : 'Salvar perfil'}
                 </button>
               </div>
             </div>
@@ -190,7 +283,7 @@ export default function PerfilPage() {
 
           {/* Posts */}
           <div>
-            <h2 className="text-lg font-bold mb-3 px-1">Seus posts</h2>
+            <h2 className="text-base font-bold mb-3 px-1 text-zinc-400 uppercase tracking-wider text-xs">Seus posts</h2>
             {posts.length === 0 ? (
               <div className="text-center py-12 text-zinc-600">
                 <p className="text-3xl mb-2">📝</p>

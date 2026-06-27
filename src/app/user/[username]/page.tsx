@@ -33,7 +33,7 @@ function formatDate(dateStr: string) {
 
 export default function UserPage() {
   const params = useParams()
-  const username = String(params.username || '')
+  const username = decodeURIComponent(String(params.username || ''))
 
   const [profile, setProfile] = useState<Profile | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
@@ -43,6 +43,9 @@ export default function UserPage() {
   const [theyFollowMe, setTheyFollowMe] = useState(false)
   const [isOwnProfile, setIsOwnProfile] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
+  const [modal, setModal] = useState<'followers' | 'following' | null>(null)
+  const [modalUsers, setModalUsers] = useState<{ id: string; username: string; avatar_url: string | null }[]>([])
+  const [modalLoading, setModalLoading] = useState(false)
 
   async function loadUser() {
     if (!username) return
@@ -83,6 +86,33 @@ export default function UserPage() {
       setIsFollowing(!!iFollow)
       setTheyFollowMe(!!theyFollow)
     }
+  }
+
+  async function openModal(type: 'followers' | 'following') {
+    if (!profile) return
+    setModal(type)
+    setModalLoading(true)
+    setModalUsers([])
+
+    let ids: string[] = []
+
+    if (type === 'followers') {
+      const { data } = await supabase
+        .from('follows').select('follower_id').eq('following_id', profile.id)
+      ids = (data || []).map((r: { follower_id: string }) => r.follower_id)
+    } else {
+      const { data } = await supabase
+        .from('follows').select('following_id').eq('follower_id', profile.id)
+      ids = (data || []).map((r: { following_id: string }) => r.following_id)
+    }
+
+    if (ids.length === 0) { setModalLoading(false); return }
+
+    const { data: users } = await supabase
+      .from('profiles').select('id, username, avatar_url').in('id', ids)
+
+    setModalUsers(users || [])
+    setModalLoading(false)
   }
 
   async function toggleFollow() {
@@ -167,14 +197,14 @@ export default function UserPage() {
                     <span className="font-bold text-white">{posts.length}</span>
                     <span className="text-zinc-500 ml-1">posts</span>
                   </div>
-                  <div className="text-center">
+                  <button onClick={() => openModal('followers')} className="text-center hover:opacity-70 transition-opacity">
                     <span className="font-bold text-white">{followers}</span>
                     <span className="text-zinc-500 ml-1">seguidores</span>
-                  </div>
-                  <div className="text-center">
+                  </button>
+                  <button onClick={() => openModal('following')} className="text-center hover:opacity-70 transition-opacity">
                     <span className="font-bold text-white">{following}</span>
                     <span className="text-zinc-500 ml-1">seguindo</span>
-                  </div>
+                  </button>
                 </div>
 
                 {/* Botões — só para outros perfis */}
@@ -262,6 +292,53 @@ export default function UserPage() {
 
         </div>
       </main>
+
+      {/* Followers / Following modal */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setModal(null)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+              <h3 className="font-semibold text-white">
+                {modal === 'followers' ? 'Seguidores' : 'Seguindo'}
+              </h3>
+              <button onClick={() => setModal(null)} className="w-7 h-7 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="max-h-72 overflow-y-auto divide-y divide-zinc-800">
+              {modalLoading ? (
+                <div className="flex items-center justify-center py-10 gap-2 text-zinc-500 text-sm">
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                  Carregando…
+                </div>
+              ) : modalUsers.length === 0 ? (
+                <div className="text-center py-10 text-zinc-500 text-sm">Nenhum usuário ainda.</div>
+              ) : (
+                modalUsers.map(u => (
+                  <a key={u.id} href={`/u/${encodeURIComponent(u.username)}`} className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-800 transition-colors">
+                    {u.avatar_url ? (
+                      <img src={u.avatar_url} alt={u.username} className="w-9 h-9 rounded-full object-cover border border-zinc-700 shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-sm font-bold border border-zinc-700 shrink-0">
+                        {u.username.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-sm font-medium text-zinc-100">@{u.username}</span>
+                  </a>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
